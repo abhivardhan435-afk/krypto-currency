@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pandas
+scikit-learn
+httpx
+apscheduler
+sqlalchemy
+pydantic
