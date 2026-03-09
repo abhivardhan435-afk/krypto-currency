@@ -1,22 +1,20 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+import os
 
-DATABASE_URL = "sqlite:///./crypto_data.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./crypto.db")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
-class CryptoDataRecord(Base):
-    __tablename__ = "crypto_data_records"
-
-    id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String, index=True)
-    name = Column(String)
-    price = Column(Float)
-    market_cap = Column(Float)
-    volume_24h = Column(Float)
-    percent_change_24h = Column(Float)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

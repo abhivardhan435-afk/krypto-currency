@@ -1,17 +1,18 @@
 from fastapi import FastAPI, BackgroundTasks, Depends
-from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from database import SessionLocal, CryptoDataRecord, engine, Base
-import asyncio
-from fetcher import fetch_crypto_data, LATEST_ML_RESULTS, background_task, logger
-import pandas as pd
+from sqlalchemy.orm import Session
+from apscheduler.schedulers.background import BackgroundScheduler
+import uvicorn
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+from database import engine, Base, get_db
+from fetcher import fetch_crypto_data
+from ml_pipeline import get_market_intelligence
+import time
+import os
 
 app = FastAPI(title="Crypto Market Intelligence API")
 
-# Enable CORS for frontend
+# Setup CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,82 +21,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+scheduler = BackgroundScheduler()
+
+def scheduled_job():
+    db = next(get_db())
+    fetch_crypto_data(db)
+
 @app.on_event("startup")
-async def startup_event():
-    logger.info("Starting background fetcher task...")
-    asyncio.create_task(background_task())
+def startup_event():
+    Base.metadata.create_all(bind=engine)
+    
+    # fetch initial data immediately
+    # scheduled_job()
+    
+    # Schedule to fetch data every 60 seconds
+    scheduler.add_job(scheduled_job, 'interval', seconds=60)
+    scheduler.start()
+    
+    # Do initial fetch here to ensure we have data immediately
+    # run in background
+    db = next(get_db())
+    fetch_crypto_data(db)
 
-import numpy as np
-from fastapi.encoders import jsonable_encoder
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.shutdown()
 
-@app.get("/api/crypto/latest")
-async def get_latest_data():
-    try:
-        # Prevent completely invalid JSON by ensuring basic types
-        data_clean = []
-        for row in LATEST_ML_RESULTS.get("data", []):
-            clean_row = {}
-            for k, v in row.items():
-                if pd.isna(v):
-                    clean_row[k] = None
-                else:
-                    clean_row[k] = v
-            data_clean.append(clean_row)
-        
-        return JSONResponse(content=jsonable_encoder({
-            "data": data_clean,
-            "metrics": LATEST_ML_RESULTS.get("metrics", {})
-        }))
-    except Exception as e:
-        logger.error(f"Error in /api/crypto/latest: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+@app.get("/api/dashboard")
+def get_dashboard_data(db: Session = Depends(get_db)):
+    result = get_market_intelligence(db)
+    return result
 
-@app.get("/api/crypto/history")
-async def get_dataset_csv():
-    """
-    Download dataset as CSV.
-    We just export the SQLite DB history.
-    """
-    db = SessionLocal()
-    try:
-        df = pd.read_sql(db.query(CryptoDataRecord).statement, db.bind)
-        csv_data = df.to_csv(index=False)
-        return Response(content=csv_data, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=crypto_history.csv"})
-    finally:
-        db.close()
+@app.post("/api/fetch")
+def trigger_fetch(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    background_tasks.add_task(fetch_crypto_data, db)
+    return {"message": "Data fetch started in background."}
 
-@app.get("/api/crypto/history/{symbol}")
-async def get_coin_history(symbol: str):
-    """
-    Get time-series history for a specific coin.
-    """
-    db = SessionLocal()
-    try:
-        # Fetch the last 7 days of data for the coin, ordered by timestamp
-        query = db.query(
-            CryptoDataRecord.timestamp,
-            CryptoDataRecord.market_cap
-        ).filter(
-            CryptoDataRecord.symbol == symbol.lower()
-        ).order_by(
-            CryptoDataRecord.timestamp.asc()
-        )
+from models import CryptoRecord
+
+@app.get("/api/history/{symbol}")
+def get_coin_history(symbol: str, db: Session = Depends(get_db)):
+    records = db.query(CryptoRecord).filter(
+        CryptoRecord.symbol == symbol.upper()
+    ).order_by(CryptoRecord.timestamp.asc()).all()
+    
+    if not records:
+        return {"status": "error", "message": "No data found for symbol"}
         
-        df = pd.read_sql(query.statement, db.bind)
+    history = []
+    initial_price = records[0].price if records[0].price > 0 else 1
+    
+    for r in records:
+        growth_pct = ((r.price - initial_price) / initial_price) * 100
+        history.append({
+            "timestamp": r.timestamp.isoformat(),
+            "price": r.price,
+            "growth_pct": growth_pct
+        })
         
-        # Convert timestamp to string if necessary, handle NaNs
-        df = df.replace({pd.NA: None, float("nan"): None})
-        
-        history_data = []
-        for index, row in df.iterrows():
-            history_data.append({
-                "timestamp": row["timestamp"].isoformat() if hasattr(row["timestamp"], "isoformat") else row["timestamp"],
-                "market_cap": row["market_cap"]
-            })
-            
-        return JSONResponse(content={"symbol": symbol, "history": history_data})
-    except Exception as e:
-        logger.error(f"Error fetching history for {symbol}: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        db.close()
+    return {"status": "success", "symbol": symbol.upper(), "data": history}
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
