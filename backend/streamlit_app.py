@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
-import requests
 import plotly.express as px
 import plotly.graph_objects as go
+from database import engine, Base, get_db
+from ml_pipeline import get_market_intelligence
+from models import CryptoRecord
+from fetcher import fetch_crypto_data
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -33,28 +37,62 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- API HELPERS ---
-API_BASE_URL = "http://localhost:8000"
+# --- BACKEND INTEGRATION ---
+@st.cache_resource
+def init_background_jobs():
+    Base.metadata.create_all(bind=engine)
+    scheduler = BackgroundScheduler()
+    
+    def scheduled_job():
+        db = next(get_db())
+        fetch_crypto_data(db)
+        
+    scheduler.add_job(scheduled_job, 'interval', seconds=60)
+    scheduler.start()
+    
+    # Do initial fetch here to ensure we have data immediately
+    db = next(get_db())
+    fetch_crypto_data(db)
+    
+    return scheduler
+
+# Start the background scheduler
+_ = init_background_jobs()
 
 @st.cache_data(ttl=60)
 def fetch_dashboard_data():
     try:
-        res = requests.get(f"{API_BASE_URL}/api/dashboard")
-        if res.status_code == 200:
-            return res.json()
+        db = next(get_db())
+        return get_market_intelligence(db)
     except Exception as e:
-        st.error(f"Cannot connect to Core Backend: {e}")
+        st.error(f"Cannot process data: {e}")
     return None
 
 @st.cache_data(ttl=60)
 def fetch_history_data(symbol):
     try:
-        res = requests.get(f"{API_BASE_URL}/api/history/{symbol}")
-        if res.status_code == 200:
-            return res.json()
+        db = next(get_db())
+        records = db.query(CryptoRecord).filter(
+            CryptoRecord.symbol == symbol.upper()
+        ).order_by(CryptoRecord.timestamp.asc()).all()
+        
+        if not records:
+            return {"status": "error", "message": "No data found for symbol"}
+            
+        history = []
+        initial_price = records[0].price if records[0].price > 0 else 1
+        
+        for r in records:
+            growth_pct = ((r.price - initial_price) / initial_price) * 100
+            history.append({
+                "timestamp": r.timestamp.isoformat(),
+                "price": r.price,
+                "growth_pct": growth_pct
+            })
+            
+        return {"status": "success", "symbol": symbol.upper(), "data": history}
     except Exception as e:
         return None
-    return None
 
 # --- MAIN RENDER ---
 def main():
