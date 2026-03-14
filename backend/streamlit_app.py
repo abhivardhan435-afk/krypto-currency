@@ -65,11 +65,13 @@ def fetch_history_data(symbol):
 def fetch_candlestick_data_binance(symbol):
     try:
         binance_symbol = f"{symbol.upper()}USDT"
-        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={binance_symbol}&interval=1h&limit=168")
+        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={binance_symbol}&interval=1h&limit=168", timeout=10)
         if res.status_code == 200:
             return res.json()
-    except Exception:
-        pass
+        else:
+            print(f"Binance API returned {res.status_code} for {binance_symbol}")
+    except Exception as e:
+        print(f"Error fetching Binance data for {symbol}: {e}")
     return None
 
 # --- MAIN RENDER ---
@@ -187,6 +189,9 @@ def main():
         st.plotly_chart(fig_candle, use_container_width=True)
     else:
         st.info(f"Candlestick data unavailable directly for {selected_asset}/USDT from Binance API.")
+        if st.button("Retry Candle Fetch"):
+            st.cache_data.clear()
+            st.rerun()
         
     st.markdown("<br/>", unsafe_allow_html=True)
     
