@@ -16,7 +16,7 @@ import CandlestickChart from './CandlestickChart';
 import CorrelationMatrix from './CorrelationMatrix';
 import CoinGrowthChart from './CoinGrowthChart';
 
-const API_URL = "http://localhost:8000/api/dashboard";
+const API_URL = "http://127.0.0.1:8000/api/dashboard";
 
 function App() {
   const [data, setData] = useState([]);
@@ -53,7 +53,7 @@ function App() {
   const triggerFetch = async () => {
     try {
       setLoading(true);
-      await axios.post("http://localhost:8000/api/fetch");
+      await axios.post("http://127.0.0.1:8000/api/fetch");
       setTimeout(fetchData, 2000); // Wait for backend to update DB
     } catch (e) {
       console.error(e);
