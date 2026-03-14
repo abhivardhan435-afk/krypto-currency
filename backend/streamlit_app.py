@@ -63,16 +63,12 @@ def fetch_history_data(symbol):
 
 @st.cache_data(ttl=300)
 def fetch_candlestick_data_binance(symbol):
-    try:
-        binance_symbol = f"{symbol.upper()}USDT"
-        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={binance_symbol}&interval=1h&limit=168", timeout=10)
-        if res.status_code == 200:
-            return res.json()
-        else:
-            print(f"Binance API returned {res.status_code} for {binance_symbol}")
-    except Exception as e:
-        print(f"Error fetching Binance data for {symbol}: {e}")
-    return None
+    binance_symbol = f"{symbol.upper().strip()}USDT"
+    res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={binance_symbol}&interval=1h&limit=168", timeout=10)
+    if res.status_code == 200:
+        return res.json()
+    else:
+        raise Exception(f"Binance API returned {res.status_code}")
 
 # --- MAIN RENDER ---
 def main():
@@ -159,13 +155,20 @@ def main():
 
     # Component Row: Select Asset
     st.markdown("<hr style='border-color: #2d3748;'>", unsafe_allow_html=True)
-    selected_asset = st.selectbox("Select Asset for Deep Analysis", df['symbol'].head(100).tolist())
+    # Ensure options are purely standard Python strings to avoid DataFrame indexing quirks
+    symbols_list = [str(x) for x in df['symbol'].head(100).tolist()]
+    selected_asset = st.selectbox("Select Asset for Deep Analysis", symbols_list)
     
     # Advanced Candlestick Chart Row
     st.markdown(f"<div class='metric-title' style='margin-bottom:0.25rem;'>Advanced Candlestick Chart (1H) -> {selected_asset}</div>", unsafe_allow_html=True)
     st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem;'>Visualizes Open, High, Low, and Close prices over time for detailed technical analysis.</div>", unsafe_allow_html=True)
     
-    candle_data = fetch_candlestick_data_binance(selected_asset)
+    candle_data = None
+    try:
+        candle_data = fetch_candlestick_data_binance(selected_asset)
+    except Exception as e:
+        pass
+        
     if candle_data:
         candle_df = pd.DataFrame(candle_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
         candle_df['timestamp'] = pd.to_datetime(candle_df['timestamp'], unit='ms')
