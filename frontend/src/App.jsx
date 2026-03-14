@@ -89,9 +89,11 @@ function App() {
             risk: d.risk_score
           })),
           backgroundColor: data.map(d =>
-            d.is_anomaly ? 'rgba(239, 68, 68, 0.8)' : 'rgba(59, 130, 246, 0.6)'
+            d.is_anomaly ? 'rgba(239, 68, 68, 0.7)' : 'rgba(59, 130, 246, 0.4)'
           ),
-          pointRadius: data.map(d => d.is_anomaly ? 8 : 4),
+          pointRadius: data.map(d => d.is_anomaly ? 6 : 3),
+          pointBorderColor: 'rgba(42, 46, 57, 0.8)',
+          pointBorderWidth: 1,
         }
       ]
     };
@@ -176,14 +178,16 @@ function App() {
 
       <div className="grid-large">
         <div className="card">
-          <div className="card-title">Market Cap Distribution (Top 20)</div>
+          <div className="card-title" style={{ marginBottom: '0.25rem' }}>Market Cap Distribution (Top 20)</div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', marginTop: 0 }}>Displays the total market capitalization for the top 20 cryptocurrencies to identify market dominance.</p>
           <div className="chart-container">
             <Bar data={marketCapData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
           </div>
         </div>
 
         <div className="card">
-          <div className="card-title">Risk Matrix: Liquidity vs Volatility</div>
+          <div className="card-title" style={{ marginBottom: '0.25rem' }}>Risk Matrix: Liquidity vs Volatility</div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', marginTop: 0 }}>Evaluates asset risk based on liquidity and volatility. Red points highlight ML-detected anomalies.</p>
           <div className="chart-container">
             <Scatter data={scatterData} options={{ maintainAspectRatio: false, ...scatterOptions }} />
           </div>
@@ -192,7 +196,7 @@ function App() {
 
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '2rem' }}>
         <div className="card" style={{ flex: '1 1 50%', minWidth: 0 }}>
-          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
             <span>Advanced Candlestick Chart (1H)</span>
             <select
               value={selectedCoin}
@@ -202,15 +206,17 @@ function App() {
               {data.slice(0, 50).map(d => <option key={d.symbol} value={d.symbol}>{d.symbol}</option>)}
             </select>
           </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', marginTop: 0 }}>Visualizes Open, High, Low, and Close prices over time for detailed technical analysis.</p>
           <div className="chart-container">
             <CandlestickChart symbol={selectedCoin} />
           </div>
         </div>
 
         <div className="card" style={{ flex: '1 1 50%', minWidth: 0 }}>
-          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
             <span>Cumulative Market Cap Growth (%) vs Time</span>
           </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', marginTop: 0 }}>Tracks the percentage growth of the selected asset's market cap to highlight performance trends.</p>
           <div className="chart-container">
             <CoinGrowthChart symbol={selectedCoin} />
           </div>
@@ -218,8 +224,9 @@ function App() {
       </div>
 
       <div className="card" style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div className="card-title" style={{ width: '100%', textAlign: 'center' }}>Cross-Asset Correlation Matrix (Top 15 Returns)</div>
-        <div style={{ padding: '0.5rem 0', display: 'flex', justifyContent: 'center' }}>
+        <div className="card-title" style={{ width: '100%', textAlign: 'center', marginBottom: '0.25rem' }}>Cross-Asset Correlation Matrix (Top 15 Returns)</div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', marginTop: 0, textAlign: 'center' }}>Shows correlation between assets' returns. Positive (green) moves together; negative (red) diverges.</p>
+        <div style={{ padding: '0.5rem 0', display: 'flex', justifyContent: 'center', width: '100%' }}>
           <CorrelationMatrix matrix={corrMatrix} />
         </div>
       </div>
