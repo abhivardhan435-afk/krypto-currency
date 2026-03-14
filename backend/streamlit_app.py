@@ -35,9 +35,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- API HELPERS ---
-if "API_BASE_URL" in st.secrets:
+try:
     API_BASE_URL = st.secrets["API_BASE_URL"]
-else:
+except Exception:
     API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
 @st.cache_data(ttl=60)
@@ -58,6 +58,17 @@ def fetch_history_data(symbol):
             return res.json()
     except Exception as e:
         return None
+    return None
+
+@st.cache_data(ttl=300)
+def fetch_candlestick_data_binance(symbol):
+    try:
+        binance_symbol = f"{symbol.upper()}USDT"
+        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={binance_symbol}&interval=1h&limit=168")
+        if res.status_code == 200:
+            return res.json()
+    except Exception:
+        pass
     return None
 
 # --- MAIN RENDER ---
@@ -115,7 +126,8 @@ def main():
     # Charts Row 1
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("<div class='metric-title'>Market Cap Distribution (Top 20)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-title' style='margin-bottom:0.25rem;'>Market Cap Distribution (Top 20)</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem;'>Displays the relative market dominance of the top 20 assets.</div>", unsafe_allow_html=True)
         top20 = df.nlargest(20, 'market_cap')
         fig_bar = px.bar(top20, x='symbol', y='market_cap', template="plotly_dark")
         fig_bar.update_layout(margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
@@ -123,12 +135,18 @@ def main():
         st.plotly_chart(fig_bar, use_container_width=True)
 
     with c2:
-        st.markdown("<div class='metric-title'>Risk Matrix: Liquidity vs Volatility</div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-title' style='margin-bottom:0.25rem;'>Risk Matrix: Liquidity vs Volatility</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem;'>Evaluates risk based on liquidity/volatility. Red indicates ML anomalies.</div>", unsafe_allow_html=True)
         # Handle colors based on anomaly
-        df['color'] = df['is_anomaly'].apply(lambda x: '#ef4444' if x else '#3b82f6')
-        df['size'] = df['is_anomaly'].apply(lambda x: 12 if x else 6)
+        df['color'] = df['is_anomaly'].apply(lambda x: 'rgba(239, 68, 68, 0.7)' if x else 'rgba(59, 130, 246, 0.4)')
+        df['size'] = df['is_anomaly'].apply(lambda x: 8 if x else 4)
         
+        # Adding marginal plots helps understand density even on overlapping areas
         fig_scatter = px.scatter(df, x='norm_liquidity', y='norm_volatility', hover_name='symbol', color='color', size='size', template="plotly_dark", color_discrete_map="identity")
+        
+        # Use update_traces to improve visibility of overlapping points via border outlines
+        fig_scatter.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+        
         fig_scatter.update_layout(margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", showlegend=False)
         st.plotly_chart(fig_scatter, use_container_width=True)
 
@@ -136,9 +154,41 @@ def main():
     st.markdown("<hr style='border-color: #2d3748;'>", unsafe_allow_html=True)
     selected_asset = st.selectbox("Select Asset for Deep Analysis", df['symbol'].head(100).tolist())
     
+    # Advanced Candlestick Chart Row
+    st.markdown(f"<div class='metric-title' style='margin-bottom:0.25rem;'>Advanced Candlestick Chart (1H) -> {selected_asset}</div>", unsafe_allow_html=True)
+    st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem;'>Visualizes Open, High, Low, and Close prices over time for detailed technical analysis.</div>", unsafe_allow_html=True)
+    
+    candle_data = fetch_candlestick_data_binance(selected_asset)
+    if candle_data:
+        candle_df = pd.DataFrame(candle_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
+        candle_df['timestamp'] = pd.to_datetime(candle_df['timestamp'], unit='ms')
+        
+        fig_candle = go.Figure(data=[go.Candlestick(
+            x=candle_df['timestamp'],
+            open=candle_df['open'],
+            high=candle_df['high'],
+            low=candle_df['low'],
+            close=candle_df['close'],
+            increasing_line_color='#10b981',
+            decreasing_line_color='#ef4444'
+        )])
+        fig_candle.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis_rangeslider_visible=False,
+            font=dict(color='#d1d4dc')
+        )
+        st.plotly_chart(fig_candle, use_container_width=True)
+    else:
+        st.info(f"Candlestick data unavailable directly for {selected_asset}/USDT from Binance API.")
+        
+    st.markdown("<br/>", unsafe_allow_html=True)
+    
     cr1, cr2 = st.columns(2)
     with cr1:
-        st.markdown(f"<div class='metric-title'>Cumulative Market Cap Growth (%) vs Time -> {selected_asset}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-title' style='margin-bottom:0.25rem;'>Cumulative Market Cap Growth (%) vs Time -> {selected_asset}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem;'>Tracks the percentage growth trajectory of the selected asset.</div>", unsafe_allow_html=True)
         hist_payload = fetch_history_data(selected_asset)
         
         if hist_payload and hist_payload['status'] == 'success':
@@ -151,7 +201,8 @@ def main():
             st.info("Insufficient historical data cache.")
 
     with cr2:
-        st.markdown("<div class='metric-title'>Cross-Asset Correlation Matrix</div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-title' style='margin-bottom:0.25rem; text-align: center;'>Cross-Asset Correlation Matrix</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem; text-align: center;'>Shows return correlation. Green: moves together, Red: diverges.</div>", unsafe_allow_html=True)
         if corr_matrix:
             corr_df = pd.DataFrame(corr_matrix)
             fig_heat = px.imshow(corr_df, text_auto=".1f", aspect="auto", color_continuous_scale="RdYlGn", template="plotly_dark")
