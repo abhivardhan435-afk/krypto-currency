@@ -43,11 +43,11 @@ except Exception:
 @st.cache_data(ttl=60)
 def fetch_dashboard_data():
     try:
-        res = requests.get(f"{API_BASE_URL}/api/dashboard")
+        res = requests.get(f"{API_BASE_URL}/api/dashboard", timeout=10)
         if res.status_code == 200:
             return res.json()
     except Exception as e:
-        st.error(f"Cannot connect to Core Backend: {e}")
+        return {"status": "error", "message": f"Connection Refused: {str(e)}"}
     return None
 
 @st.cache_data(ttl=60)
@@ -82,7 +82,11 @@ def main():
     data_payload = fetch_dashboard_data()
 
     if not data_payload or data_payload.get('status') == 'error':
-        st.warning("Awaiting market data pipeline. Please ensure the FastAPI backend is running.")
+        err_msg = data_payload.get('message', 'No data or backend offline.') if data_payload else 'Unknown error'
+        st.warning(f"Awaiting market data pipeline. Please ensure the FastAPI backend is running.\n\n({err_msg})")
+        if st.button("Retry Connection"):
+            st.cache_data.clear()
+            st.rerun()
         return
 
     # Unpack Data
