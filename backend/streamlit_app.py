@@ -4,6 +4,7 @@ import requests
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import yfinance as yf
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -61,14 +62,24 @@ def fetch_history_data(symbol):
         return None
     return None
 
-@st.cache_data(ttl=300)
-def fetch_candlestick_data_binance(symbol):
-    binance_symbol = f"{symbol.upper().strip()}USDT"
-    res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={binance_symbol}&interval=1h&limit=168", timeout=10)
-    if res.status_code == 200:
-        return res.json()
-    else:
-        raise Exception(f"Binance API returned {res.status_code}")
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_candlestick_data_yfinance(symbol):
+    yf_symbol = f"{symbol.upper().strip()}-USD"
+    df = yf.download(yf_symbol, period="7d", interval="1h", progress=False)
+    
+    if df.empty:
+        raise Exception(f"No candlestick data found for {yf_symbol}")
+        
+    # Handle multi-index columns on newer yfinance versions
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.droplevel(1)
+        
+    df.reset_index(inplace=True)
+    
+    # yfinance sometimes outputs Datetime or Date
+    time_col = 'Datetime' if 'Datetime' in df.columns else 'Date'
+    df.rename(columns={time_col: 'timestamp', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close'}, inplace=True)
+    return df.to_dict('records')
 
 # --- MAIN RENDER ---
 def main():
@@ -163,15 +174,14 @@ def main():
     st.markdown(f"<div class='metric-title' style='margin-bottom:0.25rem;'>Advanced Candlestick Chart (1H) -> {selected_asset}</div>", unsafe_allow_html=True)
     st.markdown("<div style='color: #94a3b8; font-size: 0.8rem; margin-bottom: 1rem;'>Visualizes Open, High, Low, and Close prices over time for detailed technical analysis.</div>", unsafe_allow_html=True)
     
-    candle_data = None
+    candle_err = None
     try:
-        candle_data = fetch_candlestick_data_binance(selected_asset)
+        candle_data = fetch_candlestick_data_yfinance(selected_asset)
     except Exception as e:
-        pass
+        candle_err = str(e)
         
     if candle_data:
-        candle_df = pd.DataFrame(candle_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
-        candle_df['timestamp'] = pd.to_datetime(candle_df['timestamp'], unit='ms')
+        candle_df = pd.DataFrame(candle_data)
         
         fig_candle = go.Figure(data=[go.Candlestick(
             x=candle_df['timestamp'],
@@ -191,7 +201,9 @@ def main():
         )
         st.plotly_chart(fig_candle, use_container_width=True)
     else:
-        st.info(f"Candlestick data unavailable directly for {selected_asset}/USDT from Binance API.")
+        st.info(f"Candlestick data unavailable for {selected_asset} via Yahoo Finance.")
+        if candle_err:
+            st.error(f"Debug Error: {candle_err}")
         if st.button("Retry Candle Fetch"):
             st.cache_data.clear()
             st.rerun()
