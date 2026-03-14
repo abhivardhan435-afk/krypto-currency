@@ -14,8 +14,8 @@ export default function CorrelationMatrix({ matrix }) {
     }
 
     return (
-        <div style={{ overflowX: 'auto', fontSize: '0.75rem', width: '100%' }}>
-            <table style={{ minWidth: 'max-content', width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ overflowX: 'auto', fontSize: '0.75rem', width: '100%', display: 'flex', justifyContent: 'center' }}>
+            <table style={{ margin: '0 auto', borderCollapse: 'collapse' }}>
                 <thead>
                     <tr>
                         <th style={{ borderBottom: 'none' }}></th>
