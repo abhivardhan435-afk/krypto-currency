@@ -43,7 +43,8 @@ except Exception:
 @st.cache_data(ttl=60)
 def fetch_dashboard_data():
     try:
-        res = requests.get(f"{API_BASE_URL}/api/dashboard", timeout=10)
+        # Increased timeout to 60s to account for Render free-tier cold starts
+        res = requests.get(f"{API_BASE_URL}/api/dashboard", timeout=60)
         if res.status_code == 200:
             return res.json()
     except Exception as e:
@@ -53,7 +54,7 @@ def fetch_dashboard_data():
 @st.cache_data(ttl=60)
 def fetch_history_data(symbol):
     try:
-        res = requests.get(f"{API_BASE_URL}/api/history/{symbol}")
+        res = requests.get(f"{API_BASE_URL}/api/history/{symbol}", timeout=60)
         if res.status_code == 200:
             return res.json()
     except Exception as e:
